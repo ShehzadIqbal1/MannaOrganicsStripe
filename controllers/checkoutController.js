@@ -77,8 +77,8 @@ async function createCheckoutSession(req, res) {
       metadata: {
         orderId: order._id.toString()
       },
-      success_url: `${process.env.CLIENT_ORIGIN}/success.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.CLIENT_ORIGIN}/cart.html`
+      success_url: `${process.env.CLIENT_ORIGIN}/success.php?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.CLIENT_ORIGIN}/cart.php`
     });
 
     order.stripeSessionId = session.id;
