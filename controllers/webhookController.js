@@ -60,6 +60,7 @@ async function sendOrderEmailSafe(order) {
       subject: "Your Manna Organics Order Confirmation",
       html: orderEmailTemplate(order)
     });
+    console.log(`Order confirmation email sent to ${order.customer.email} for order ${order._id}`);
   } catch (error) {
     console.error("Order email failed:", error.message);
   }
@@ -87,6 +88,7 @@ async function markOrderPaid(session) {
 
   await order.save();
 
+  console.log(`Payment successful for order ${orderId}. Sending confirmation email to ${order.customer.email}`);
   await sendOrderEmailSafe(order);
 
   return order;
