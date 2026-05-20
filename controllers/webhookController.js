@@ -54,17 +54,18 @@ function getOrderIdFromSession(session) {
 
 async function sendOrderEmailSafe(order) {
   try {
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: process.env.MAIL_FROM,
       to: order.customer.email,
       subject: "Your Manna Organics Order Confirmation",
       html: orderEmailTemplate(order)
     });
+
     console.log(`Order confirmation email sent to ${order.customer.email} for order ${order._id}`);
     console.log("EMAIL SENT SUCCESSFULLY");
-    console.log("Message ID:", info.messageId);
-    console.log("Accepted:", info.accepted);
-    console.log("Rejected:", info.rejected);
+    console.log("Message ID:", info && info.messageId);
+    console.log("Accepted:", info && info.accepted);
+    console.log("Rejected:", info && info.rejected);
 
   } catch (error) {
 
