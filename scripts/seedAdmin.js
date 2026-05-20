@@ -2,6 +2,8 @@ require("dotenv").config();
 const bcrypt = require("bcryptjs");
 const connectDB = require("../config/db");
 const Admin = require("../models/Admin");
+const dns = require('node:dns'); 
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 async function seedAdmin() {
   await connectDB();

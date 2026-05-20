@@ -171,7 +171,9 @@ async function handleStripeWebhook(req, res) {
     }
 
     const data = event.data.object;
-
+    console.log("EVENT TYPE:", event.type);
+    console.log("PAYMENT STATUS:", data.payment_status);
+    console.log("METADATA:", data.metadata);
     switch (event.type) {
       case "checkout.session.completed": {
         if (data.payment_status === "paid") {
@@ -229,7 +231,7 @@ async function handleStripeWebhook(req, res) {
     if (stripeEvent) {
       stripeEvent.status = "failed";
       stripeEvent.errorMessage = error.message;
-      await stripeEvent.save().catch(() => {});
+      await stripeEvent.save().catch(() => { });
     }
 
     return res.status(500).json({
