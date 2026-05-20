@@ -61,7 +61,13 @@ async function sendOrderEmailSafe(order) {
       html: orderEmailTemplate(order)
     });
     console.log(`Order confirmation email sent to ${order.customer.email} for order ${order._id}`);
+    console.log("EMAIL SENT SUCCESSFULLY");
+    console.log("Message ID:", info.messageId);
+    console.log("Accepted:", info.accepted);
+    console.log("Rejected:", info.rejected);
+
   } catch (error) {
+
     console.error("Order email failed:", error.message);
   }
 }
@@ -89,8 +95,10 @@ async function markOrderPaid(session) {
   await order.save();
 
   console.log(`Payment successful for order ${orderId}. Sending confirmation email to ${order.customer.email}`);
+
   await sendOrderEmailSafe(order);
 
+  console.log("Email function completed for:", order.customer.email);
   return order;
 }
 
