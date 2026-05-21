@@ -1,7 +1,7 @@
 const stripe = require("../config/stripe");
 const Order = require("../models/Order");
 const StripeEvent = require("../models/StripeEvent");
-const transporter = require("../config/mailer");
+const mailer = require("../config/mailer");
 
 function orderEmailTemplate(order) {
   const itemsHtml = order.items
@@ -54,22 +54,17 @@ function getOrderIdFromSession(session) {
 
 async function sendOrderEmailSafe(order) {
   try {
-    const info = await transporter.sendMail({
-      from: process.env.MAIL_FROM,
+    const data = await mailer.sendMail({
       to: order.customer.email,
       subject: "Your Manna Organics Order Confirmation",
       html: orderEmailTemplate(order)
     });
 
-    console.log(`Order confirmation email sent to ${order.customer.email} for order ${order._id}`);
-    console.log("EMAIL SENT SUCCESSFULLY");
-    console.log("Message ID:", info && info.messageId);
-    console.log("Accepted:", info && info.accepted);
-    console.log("Rejected:", info && info.rejected);
-
+    console.log("EMAIL SENT SUCCESSFULLY:", data);
+    return true;
   } catch (error) {
-
     console.error("Order email failed:", error.message);
+    return false;
   }
 }
 

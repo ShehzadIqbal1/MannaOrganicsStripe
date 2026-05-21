@@ -1,16 +1,20 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-const transporter = nodemailer.createTransport({
-  host: process.env.MAIL_HOST,
-  port: Number(process.env.MAIL_PORT),
-  secure: process.env.MAIL_SECURE === "true",
-  auth: {
-    user: process.env.MAIL_USER,
-    pass: process.env.MAIL_PASS
-  },
-  connectionTimeout: 150000,
-  greetingTimeout: 150000,
-  socketTimeout: 150000
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-module.exports = transporter;
+async function sendMail({ to, subject, html }) {
+  const { data, error } = await resend.emails.send({
+    from: process.env.MAIL_FROM,
+    to,
+    subject,
+    html
+  });
+
+  if (error) {
+    throw new Error(error.message || JSON.stringify(error));
+  }
+
+  return data;
+}
+
+module.exports = { sendMail };
