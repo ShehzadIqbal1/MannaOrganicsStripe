@@ -92,13 +92,8 @@ function ownerOrderEmailTemplate(order) {
   `;
 }
 
-function getOrderIdFromSession(session) {
-  return session?.metadata?.orderId;
-}
-
 async function sendOrderEmailSafe(order) {
   try {
-    // customer email
     const customerEmail = await mailer.sendMail({
       to: order.customer.email,
       subject: "Your Manna Organics Order Confirmation",
@@ -107,7 +102,6 @@ async function sendOrderEmailSafe(order) {
 
     console.log("CUSTOMER EMAIL SENT:", customerEmail);
 
-    // owner email
     if (process.env.OWNER_EMAIL) {
       const ownerEmail = await mailer.sendMail({
         to: process.env.OWNER_EMAIL,
@@ -125,11 +119,14 @@ async function sendOrderEmailSafe(order) {
   }
 }
 
-async function markOrderPaid(session) {
-  const orderId = getOrderIdFromSession(session);
+async function markPaymentIntentOrderPaid(paymentIntent) {
+  const orderId = paymentIntent.metadata?.orderId;
+
+  console.log("PAYMENT INTENT SUCCEEDED:", paymentIntent.id);
+  console.log("ORDER ID FROM METADATA:", orderId);
 
   if (!orderId) {
-    throw new Error("Missing orderId in Stripe session metadata");
+    throw new Error("Missing orderId in payment_intent metadata");
   }
 
   const order = await Order.findById(orderId);
@@ -138,60 +135,78 @@ async function markOrderPaid(session) {
     throw new Error(`Order not found: ${orderId}`);
   }
 
+  console.log("ORDER FOUND:", order._id.toString());
+  console.log("CURRENT PAYMENT STATUS:", order.paymentStatus);
+
   if (order.paymentStatus === "paid") {
+    console.log("ORDER ALREADY PAID, SKIPPING:", order._id.toString());
     return order;
   }
 
   order.paymentStatus = "paid";
-  order.stripePaymentIntentId = session.payment_intent || order.stripePaymentIntentId;
+  order.stripePaymentIntentId = paymentIntent.id;
 
   await order.save();
 
-  console.log(`Payment successful for order ${orderId}. Sending confirmation email to ${order.customer.email}`);
+  console.log("ORDER MARKED PAID:", order._id.toString());
 
   await sendOrderEmailSafe(order);
 
-  console.log("Email function completed for:", order.customer.email);
+  console.log("EMAIL FUNCTION COMPLETED FOR:", order.customer.email);
+
   return order;
 }
 
-async function markOrderExpired(session) {
-  const orderId = getOrderIdFromSession(session);
+async function markPaymentIntentOrderFailed(paymentIntent) {
+  const orderId = paymentIntent.metadata?.orderId;
+
+  console.log("PAYMENT INTENT FAILED:", paymentIntent.id);
+  console.log("FAILED ORDER ID:", orderId);
 
   if (!orderId) {
-    throw new Error("Missing orderId in Stripe session metadata");
+    console.log("No orderId metadata found for failed payment.");
+    return null;
   }
 
   const order = await Order.findById(orderId);
 
   if (!order) {
-    throw new Error(`Order not found: ${orderId}`);
-  }
-
-  if (order.paymentStatus === "pending") {
-    order.paymentStatus = "expired";
-    await order.save();
-  }
-
-  return order;
-}
-
-async function markOrderFailed(session) {
-  const orderId = getOrderIdFromSession(session);
-
-  if (!orderId) {
-    throw new Error("Missing orderId in Stripe session metadata");
-  }
-
-  const order = await Order.findById(orderId);
-
-  if (!order) {
-    throw new Error(`Order not found: ${orderId}`);
+    console.log("Failed payment order not found:", orderId);
+    return null;
   }
 
   if (order.paymentStatus !== "paid") {
     order.paymentStatus = "failed";
+    order.stripePaymentIntentId = paymentIntent.id;
     await order.save();
+
+    console.log("ORDER MARKED FAILED:", orderId);
+  }
+
+  return order;
+}
+
+async function markOrderRefundedFromCharge(charge) {
+  const paymentIntentId = charge.payment_intent;
+
+  console.log("CHARGE REFUNDED:", charge.id);
+  console.log("PAYMENT INTENT ID FROM CHARGE:", paymentIntentId);
+
+  if (!paymentIntentId) {
+    console.log("No payment intent found on refunded charge.");
+    return null;
+  }
+
+  const order = await Order.findOneAndUpdate(
+    { stripePaymentIntentId: paymentIntentId },
+    { paymentStatus: "refunded" },
+    { new: true }
+  );
+
+  if (order) {
+    console.log("ORDER MARKED REFUNDED:", order._id.toString());
+  } else {
+    console.log("No order found for refunded payment intent:", paymentIntentId);
   }
 
   return order;
@@ -224,6 +239,7 @@ async function handleStripeWebhook(req, res) {
       });
     } catch (error) {
       if (error.code === 11000) {
+        console.log("DUPLICATE STRIPE EVENT:", event.id);
         return res.json({
           received: true,
           duplicate: true
@@ -234,53 +250,35 @@ async function handleStripeWebhook(req, res) {
     }
 
     const data = event.data.object;
+
+    console.log("===== STRIPE WEBHOOK RECEIVED =====");
+    console.log("EVENT ID:", event.id);
     console.log("EVENT TYPE:", event.type);
+    console.log("DATA OBJECT ID:", data.id);
+    console.log("DATA OBJECT STATUS:", data.status);
     console.log("PAYMENT STATUS:", data.payment_status);
     console.log("METADATA:", data.metadata);
+    console.log("===================================");
+
     switch (event.type) {
-      case "checkout.session.completed": {
-        if (data.payment_status === "paid") {
-          await markOrderPaid(data);
-        }
-
-        break;
-      }
-
-      case "checkout.session.async_payment_succeeded": {
-        await markOrderPaid(data);
-        break;
-      }
-
-      case "checkout.session.async_payment_failed": {
-        await markOrderFailed(data);
-        break;
-      }
-
-      case "checkout.session.expired": {
-        await markOrderExpired(data);
+      case "payment_intent.succeeded": {
+        await markPaymentIntentOrderPaid(data);
         break;
       }
 
       case "payment_intent.payment_failed": {
-        console.log("Payment intent failed:", data.id);
+        await markPaymentIntentOrderFailed(data);
         break;
       }
 
       case "charge.refunded": {
-        const paymentIntentId = data.payment_intent;
-
-        if (paymentIntentId) {
-          await Order.findOneAndUpdate(
-            { stripePaymentIntentId: paymentIntentId },
-            { paymentStatus: "refunded" }
-          );
-        }
-
+        await markOrderRefundedFromCharge(data);
         break;
       }
 
       default:
         console.log(`Unhandled Stripe event: ${event.type}`);
+        break;
     }
 
     stripeEvent.status = "processed";
@@ -294,7 +292,7 @@ async function handleStripeWebhook(req, res) {
     if (stripeEvent) {
       stripeEvent.status = "failed";
       stripeEvent.errorMessage = error.message;
-      await stripeEvent.save().catch(() => { });
+      await stripeEvent.save().catch(() => {});
     }
 
     return res.status(500).json({
