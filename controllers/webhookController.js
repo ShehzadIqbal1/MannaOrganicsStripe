@@ -48,19 +48,76 @@ function orderEmailTemplate(order) {
   `;
 }
 
+function ownerOrderEmailTemplate(order) {
+  const itemsHtml = order.items
+    .map(
+      (item) => `
+        <tr>
+          <td>${item.name}</td>
+          <td>${item.quantity}</td>
+          <td>$${(item.unitAmount / 100).toFixed(2)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
+      <h2>New Order Received</h2>
+
+      <p><strong>Order ID:</strong> ${order._id}</p>
+      <p><strong>Payment Status:</strong> ${order.paymentStatus}</p>
+      <p><strong>Total:</strong> $${(order.totalAmount / 100).toFixed(2)}</p>
+
+      <h3>Customer Details</h3>
+      <p>
+        <strong>Name:</strong> ${order.customer.name}<br/>
+        <strong>Email:</strong> ${order.customer.email}<br/>
+        <strong>Address:</strong> ${order.customer.address}<br/>
+        <strong>ZIP Code:</strong> ${order.customer.zipCode}
+      </p>
+
+      <h3>Items</h3>
+      <table cellpadding="8" cellspacing="0" border="1" style="border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Qty</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>${itemsHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function getOrderIdFromSession(session) {
   return session?.metadata?.orderId;
 }
 
 async function sendOrderEmailSafe(order) {
   try {
-    const data = await mailer.sendMail({
+    // customer email
+    const customerEmail = await mailer.sendMail({
       to: order.customer.email,
       subject: "Your Manna Organics Order Confirmation",
       html: orderEmailTemplate(order)
     });
 
-    console.log("EMAIL SENT SUCCESSFULLY:", data);
+    console.log("CUSTOMER EMAIL SENT:", customerEmail);
+
+    // owner email
+    if (process.env.OWNER_EMAIL) {
+      const ownerEmail = await mailer.sendMail({
+        to: process.env.OWNER_EMAIL,
+        subject: `New Order Received - ${order._id}`,
+        html: ownerOrderEmailTemplate(order)
+      });
+
+      console.log("OWNER EMAIL SENT:", ownerEmail);
+    }
+
     return true;
   } catch (error) {
     console.error("Order email failed:", error.message);

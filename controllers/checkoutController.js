@@ -1,7 +1,7 @@
 const stripe = require("../config/stripe");
 const Order = require("../models/Order");
 
-const PRODUCTS = {
+const VALID_PRODUCTS = {
   teff_1: {
     name: "Instant Teff - 1 Pouch",
     unitAmount: 800
@@ -16,11 +16,16 @@ const PRODUCTS = {
   }
 };
 
-async function createCheckoutSession(req, res) {
+async function createPaymentIntent(req, res) {
   try {
     const { customer, items } = req.body;
 
-    if (!customer?.name || !customer?.email || !customer?.address || !customer?.zipCode) {
+    if (
+      !customer?.name ||
+      !customer?.email ||
+      !customer?.address ||
+      !customer?.zipCode
+    ) {
       return res.status(400).json({ message: "Missing customer fields" });
     }
 
@@ -29,7 +34,7 @@ async function createCheckoutSession(req, res) {
     }
 
     const orderItems = items.map((item) => {
-      const product = PRODUCTS[item.productId];
+      const product = VALID_PRODUCTS[item.productId];
 
       if (!product) {
         throw new Error("Invalid product selected");
@@ -61,36 +66,29 @@ async function createCheckoutSession(req, res) {
       paymentStatus: "pending"
     });
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      customer_email: customer.email,
-      line_items: orderItems.map((item) => ({
-        quantity: item.quantity,
-        price_data: {
-          currency: "usd",
-          unit_amount: item.unitAmount,
-          product_data: {
-            name: item.name
-          }
-        }
-      })),
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: totalAmount,
+      currency: "usd",
+      receipt_email: customer.email,
       metadata: {
         orderId: order._id.toString()
-      },
-      success_url: `${process.env.CLIENT_ORIGIN}/success.php?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.CLIENT_ORIGIN}/cart.php`
+      }
     });
 
-    order.stripeSessionId = session.id;
+    order.stripePaymentIntentId = paymentIntent.id;
     await order.save();
 
-    res.json({ checkoutUrl: session.url });
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      orderId: order._id.toString(),
+      totalAmount
+    });
   } catch (error) {
     res.status(400).json({
-      message: "Checkout session failed",
+      message: "Payment intent failed",
       error: error.message
     });
   }
 }
 
-module.exports = { createCheckoutSession };
+module.exports = { createPaymentIntent };
